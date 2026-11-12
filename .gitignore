@@ -9,3 +9,8 @@ requirements_prueba.txt
 models/cache/
 .pytest_cache/
 contexto_proyecto.md
+
+# Entregables locales (informe y presentacion)
+*.docx
+*.pptx
+Claude outputs/
