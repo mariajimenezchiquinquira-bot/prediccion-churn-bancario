@@ -1,0 +1,49 @@
+{
+ "cv": [
+  {
+   "Model": "Light Gradient Boosting Machine",
+   "AUC": 0.993,
+   "PR-AUC": 0.969
+  },
+  {
+   "Model": "Extreme Gradient Boosting",
+   "AUC": 0.993,
+   "PR-AUC": 0.966
+  },
+  {
+   "Model": "Random Forest Classifier",
+   "AUC": 0.987,
+   "PR-AUC": 0.944
+  },
+  {
+   "Model": "MLP Classifier",
+   "AUC": 0.948,
+   "PR-AUC": 0.821
+  },
+  {
+   "Model": "SVM - Radial Kernel",
+   "AUC": 0.943,
+   "PR-AUC": 0.813
+  },
+  {
+   "Model": "Logistic Regression",
+   "AUC": 0.924,
+   "PR-AUC": 0.761
+  }
+ ],
+ "sin_ajustar": {
+  "LightGBM": 0.965,
+  "XGBoost": 0.961,
+  "Random Forest": 0.942,
+  "SVM": 0.791,
+  "Regresión logística": 0.738,
+  "Red neuronal": 0.798
+ },
+ "ajustado": {
+  "LightGBM": 0.965,
+  "XGBoost": 0.961,
+  "Random Forest": 0.942,
+  "SVM": 0.789,
+  "Red neuronal": 0.887
+ }
+}

@@ -1,0 +1,11 @@
+.venv*/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+logs.log
+models_respaldo/
+*_respaldo.ipynb
+requirements_prueba.txt
+models/cache/
+.pytest_cache/
+contexto_proyecto.md
