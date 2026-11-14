@@ -10,7 +10,13 @@ models/cache/
 .pytest_cache/
 contexto_proyecto.md
 
-# Entregables locales (informe y presentacion)
+# Entregables locales (informe, presentacion y enunciado)
 *.docx
 *.pptx
+*.pdf
 Claude outputs/
+
+# Archivos del editor y de Windows
+.vscode/
+Thumbs.db
+desktop.ini

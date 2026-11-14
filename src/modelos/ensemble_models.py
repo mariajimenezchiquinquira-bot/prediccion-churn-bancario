@@ -1,18 +1,20 @@
-"""Modelos de ensamble para predecir churn.
-
-- Bagging        -> árboles entrenados con muestras aleatorias de clientes.
-- Random Forest  -> bagging de árboles, eligiendo variables al azar en cada división.
-- XGBoost        -> boosting de árboles.
-- LightGBM       -> boosting de árboles (variante más rápida).
-- Stacking       -> combina SVM + ensambles con un meta-modelo logístico.
-
-Flujo típico desde el notebook:
-
-    from src.modelos import ensemble_models as ens
-    busq = ens.buscar_hiperparametros("Random Forest", datos)
-    ens.resumen_busqueda(busq)
-    modelo = ens.entrenar_final("Random Forest", datos, ens.mejores_parametros(busq))
-"""
+# --------------------------------------------------------------------------
+# Modelos de ensamble para predecir churn:
+#
+# - Bagging: árboles entrenados con muestras aleatorias de clientes.
+# - Random Forest: bagging de árboles, eligiendo variables al azar en cada
+#   división.
+# - XGBoost: boosting de árboles.
+# - LightGBM: boosting de árboles (variante más rápida).
+# - Stacking: combina SVM + ensambles con un meta-modelo logístico.
+#
+# Flujo típico desde el notebook:
+#
+#     from src.modelos import ensemble_models as ens
+#     busq = ens.buscar_hiperparametros("Random Forest", datos)
+#     ens.resumen_busqueda(busq)
+#     modelo = ens.entrenar_final("Random Forest", datos, ens.mejores_parametros(busq))
+# --------------------------------------------------------------------------
 import pandas as pd
 from lightgbm import LGBMClassifier
 from scipy.stats import loguniform, randint, uniform
@@ -37,11 +39,11 @@ BASE_STACKING = ["Random Forest", "XGBoost", "LightGBM"]
 # --------------------------------------------------------------------------
 # Construcción de modelos
 # --------------------------------------------------------------------------
+# Creo el clasificador base (sin preprocesamiento) con valores por defecto +
+# params.
+#
+# Uso n_jobs=1 en cada modelo porque el paralelismo se hace en la búsqueda.
 def _clasificador(nombre: str, params: dict | None = None):
-    """Clasificador base (sin preprocesamiento) con valores por defecto + params.
-
-    n_jobs=1 en cada modelo: el paralelismo se hace a nivel de búsqueda.
-    """
     params = dict(params or {})
     if nombre == "Bagging":
         # Bagging "puro": árboles que ven TODAS las variables en cada división;
@@ -68,14 +70,14 @@ def _clasificador(nombre: str, params: dict | None = None):
     raise ValueError(f"Modelo desconocido: {nombre}")
 
 
+# Armo el pipeline: preprocesamiento (sin escalado, los árboles no lo
+# necesitan) + modelo.
+#
+# Con calibrar=True envuelvo el modelo en CalibratedClassifierCV, que
+# corrige las probabilidades (los pesos de clase las inflan) para poder
+# leerlas como probabilidad real de fuga.
 def construir_pipeline(nombre: str, datos: DataBundle, calibrar: bool = False,
                        **params) -> Pipeline:
-    """Pipeline: preprocesamiento (sin escalado, los árboles no lo necesitan) + modelo.
-
-    Con `calibrar=True` el modelo se envuelve en CalibratedClassifierCV, lo que
-    corrige las probabilidades (los pesos de clase las inflan) y las deja listas
-    para leerse como probabilidad real de fuga.
-    """
     clf = _clasificador(nombre, params)
     if calibrar:
         clf = CalibratedClassifierCV(clf, method="sigmoid", cv=5, ensemble=False)
@@ -85,8 +87,9 @@ def construir_pipeline(nombre: str, datos: DataBundle, calibrar: bool = False,
 # --------------------------------------------------------------------------
 # Búsqueda de hiperparámetros
 # --------------------------------------------------------------------------
+# Defino las distribuciones de hiperparámetros a explorar (búsqueda
+# aleatoria)
 def espacio_busqueda(nombre: str, datos: DataBundle) -> dict:
-    """Distribuciones de hiperparámetros a explorar (búsqueda aleatoria)."""
     y = datos.y_train
     peso = float((y == 0).sum() / (y == 1).sum())   # ~5.2 con 16% de churn
     if nombre == "Bagging":
@@ -130,21 +133,23 @@ def espacio_busqueda(nombre: str, datos: DataBundle) -> dict:
     raise ValueError(f"Modelo desconocido: {nombre}")
 
 
+# Hago una búsqueda aleatoria con validación cruzada estratificada solo
+# sobre el entrenamiento
 def buscar_hiperparametros(nombre: str, datos: DataBundle, n_iter: int = 20, cv: int = 5,
                            n_jobs: int = -1, verbose: int = 1) -> RandomizedSearchCV:
-    """Búsqueda aleatoria con validación cruzada estratificada SOLO sobre el train."""
     return bq.ejecutar_busqueda(RandomizedSearchCV, construir_pipeline(nombre, datos), datos,
                                 cv, n_jobs, verbose, param_distributions=espacio_busqueda(nombre, datos),
                                 n_iter=n_iter, random_state=RANDOM_STATE)
 
 
+# Devuelvo los mejores hiperparámetros sin el prefijo 'clf__'
 def mejores_parametros(busqueda: RandomizedSearchCV) -> dict:
-    """Mejores hiperparámetros sin el prefijo 'clf__'."""
     return bq.mejores_parametros(busqueda, "clf__")
 
 
+# Muestro las mejores combinaciones según PR-AUC promedio en validación
+# cruzada
 def resumen_busqueda(busqueda: RandomizedSearchCV, top: int = 8) -> pd.DataFrame:
-    """Mejores combinaciones según PR-AUC promedio en validación cruzada."""
     r = pd.DataFrame(busqueda.cv_results_)
     params = pd.DataFrame(list(r["params"])).rename(columns=lambda c: c.replace("clf__", ""))
     metr = pd.DataFrame({
@@ -169,22 +174,24 @@ def resumen_busqueda(busqueda: RandomizedSearchCV, top: int = 8) -> pd.DataFrame
     return out.head(top).reset_index(drop=True)
 
 
+# Reentreno con los mejores parámetros sobre todo el entrenamiento, con
+# probabilidades calibradas
 def entrenar_final(nombre: str, datos: DataBundle, params: dict) -> Pipeline:
-    """Reentrena con los mejores parámetros sobre todo el train, con probabilidades calibradas."""
     return bq.entrenar_final(construir_pipeline(nombre, datos, calibrar=True, **params), datos)
 
 
 # --------------------------------------------------------------------------
 # Stacking
 # --------------------------------------------------------------------------
+# Stacking: los modelos base generan predicciones fuera de muestra (CV) y un
+# meta-modelo (regresión logística) aprende a combinarlas.
+#
+# `params_modelos` = {"SVM": {...}, "Random Forest": {...}, "XGBoost":
+# {...}, "LightGBM": {...}}, con los mejores hiperparámetros de cada uno
+# (sin prefijo).
+#
+# Uso escalado porque el SVM lo necesita; no perjudica a los árboles.
 def entrenar_stacking(datos: DataBundle, params_modelos: dict) -> Pipeline:
-    """Stacking: los modelos base generan predicciones fuera de muestra (CV) y un
-    meta-modelo (regresión logística) aprende a combinarlas.
-
-    `params_modelos` = {"SVM": {...}, "Random Forest": {...}, "XGBoost": {...}, "LightGBM": {...}}
-    con los mejores hiperparámetros de cada uno (sin prefijo).
-    Se usa escalado porque el SVM lo necesita; no perjudica a los árboles.
-    """
     base = [(n, _clasificador(n, p)) for n, p in params_modelos.items()]
     stack = StackingClassifier(
         estimators=base,

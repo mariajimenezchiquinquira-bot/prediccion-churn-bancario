@@ -1,7 +1,10 @@
-"""Pruebas sobre los resultados guardados: ¿el proyecto cumple lo que se pidió?
-
-Necesitan models/resultados.joblib, que se crea al correr main.ipynb completo.
-"""
+# --------------------------------------------------------------------------
+# Pruebas sobre los resultados guardados: ¿el proyecto cumple lo que se
+# pidió?
+#
+# Necesitan models/resultados.joblib, que se crea al correr main.ipynb
+# completo.
+# --------------------------------------------------------------------------
 import pytest
 
 from src import evaluation as ev

@@ -1,4 +1,7 @@
-"""Pruebas de que cada tipo de modelo se entrena y entrega probabilidades válidas."""
+# --------------------------------------------------------------------------
+# Pruebas de que cada tipo de modelo se entrena y entrega probabilidades
+# válidas
+# --------------------------------------------------------------------------
 import numpy as np
 import pytest
 

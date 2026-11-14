@@ -1,9 +1,10 @@
-"""Métricas, selección de umbral y gráficos comunes a todos los modelos.
-
-Convención: cada modelo evaluado produce un dict de "resultado" (ver
-`evaluar_modelo`). Con varios resultados en un diccionario {nombre: resultado}
-se pueden comparar tablas y curvas de SVM, ensambles y cualquier otro modelo.
-"""
+# --------------------------------------------------------------------------
+# Métricas, selección de umbral y gráficos comunes a todos los modelos.
+#
+# Cada modelo evaluado produce un diccionario de resultado (ver
+# `evaluar_modelo`). Con varios resultados en {nombre: resultado} comparo
+# tablas y curvas de cualquier modelo.
+# --------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -32,17 +33,16 @@ from src.utils import guardar_y_mostrar
 # --------------------------------------------------------------------------
 # Puntajes y umbrales
 # --------------------------------------------------------------------------
+# Probabilidad de la clase 'se fue' (todos los modelos del proyecto tienen
+# predict_proba)
 def puntaje(modelo, X) -> np.ndarray:
-    """Probabilidad de la clase 'se fue' (todos los modelos del proyecto tienen predict_proba)."""
     return modelo.predict_proba(X)[:, 1]
 
 
+# Elijo el umbral de decisión:
+# - 'f1': el que maximiza F1.
+# - 'recall': el más alto (más preciso) que aún alcanza `recall_objetivo`.
 def elegir_umbral(y, score, criterio: str = "f1", recall_objetivo: float = 0.80) -> float:
-    """Elige el umbral de decisión.
-
-    - "f1": el que maximiza F1.
-    - "recall": el más alto (más preciso) que aún alcanza `recall_objetivo`.
-    """
     prec, rec, thr = precision_recall_curve(y, score)
     prec, rec = prec[:-1], rec[:-1]
     if criterio == "f1":
@@ -56,26 +56,24 @@ def elegir_umbral(y, score, criterio: str = "f1", recall_objetivo: float = 0.80)
     raise ValueError("criterio debe ser 'f1' o 'recall'")
 
 
+# Probabilidades de la clase 'se fue' fuera de muestra (validación cruzada)
 def _puntajes_cv(modelo, X, y, cv: int = 5, n_jobs: int = -1) -> np.ndarray:
-    """Probabilidades fuera de muestra (validación cruzada) de la clase 'se fue'."""
     skf = StratifiedKFold(cv, shuffle=True, random_state=RANDOM_STATE)
     return cross_val_predict(modelo, X, y, cv=skf, method="predict_proba", n_jobs=n_jobs)[:, 1]
 
 
+# Elijo el umbral con predicciones fuera de muestra (CV) del entrenamiento,
+# para no ajustarlo mirando la prueba
 def umbral_por_cv(modelo, X, y, cv: int = 5, criterio: str = "f1",
                   recall_objetivo: float = 0.80, n_jobs: int = -1) -> float:
-    """Elige el umbral con predicciones fuera de muestra (CV) del set de entrenamiento.
-
-    Así el umbral NO se ajusta mirando el set de prueba.
-    """
     return elegir_umbral(y, _puntajes_cv(modelo, X, y, cv, n_jobs), criterio, recall_objetivo)
 
 
 # --------------------------------------------------------------------------
 # Evaluación
 # --------------------------------------------------------------------------
+# Evalúo un modelo ya entrenado y devuelvo un diccionario de resultado
 def evaluar_modelo(nombre: str, modelo, X, y, umbral: float = 0.5) -> dict:
-    """Evalúa un modelo ya entrenado y devuelve un dict de resultado."""
     y = np.asarray(y)
     score = puntaje(modelo, X)
     pred = (score >= umbral).astype(int)
@@ -92,36 +90,37 @@ def evaluar_modelo(nombre: str, modelo, X, y, umbral: float = 0.5) -> dict:
             "y_score": score, "y_pred": pred, "metricas": metricas}
 
 
+# Entreno el modelo con `entrenar()` y elijo su umbral con CV del
+# entrenamiento. Devuelvo (modelo, umbral).
+#
+# Es la parte lenta, por eso se guarda con utils.cacheado.
 def entrenar_con_umbral(entrenar, datos, n_jobs: int = -1):
-    """Entrena el modelo con `entrenar()` y elige su umbral con CV del entrenamiento.
-
-    Devuelve (modelo, umbral). Es la parte lenta, por eso se guarda con utils.cacheado.
-    """
     modelo = entrenar()
     return modelo, umbral_por_cv(modelo, datos.X_train, datos.y_train, n_jobs=n_jobs)
 
 
+# Elijo el umbral con CV del entrenamiento (si no lo recibo), evalúo en
+# prueba y guardo el modelo y su resultado
 def registrar_modelo(nombre: str, modelo, datos, resultados: dict, modelos: dict,
                      n_jobs: int = -1, umbral: float | None = None) -> None:
-    """Elige el umbral con CV del entrenamiento (si no se da), evalúa en prueba y guarda modelo y resultado."""
     if umbral is None:
         umbral = umbral_por_cv(modelo, datos.X_train, datos.y_train, n_jobs=n_jobs)
     resultados[nombre] = evaluar_modelo(nombre, modelo, datos.X_test, datos.y_test, umbral)
     modelos[nombre] = modelo
 
 
+# Armo la tabla con las métricas de todos los modelos, ordenada por PR-AUC
+# (el mejor arriba)
 def tabla_comparativa(resultados: dict) -> pd.DataFrame:
-    """Tabla con las métricas de todos los modelos evaluados, ordenada por PR-AUC (el mejor arriba)."""
     filas = {n: {**r["metricas"], "umbral": r["umbral"]} for n, r in resultados.items()}
     return pd.DataFrame(filas).T.sort_values("pr_auc", ascending=False).round(3)
 
 
+# Ordeno a los clientes por riesgo y mido cuántas fugas captura cada decil.
+#
+# Responde: si el banco solo puede contactar al 10% de los clientes, ¿qué
+# porcentaje de las fugas reales alcanza?
 def tabla_lift(resultado: dict, n_bins: int = 10) -> pd.DataFrame:
-    """Ordena a los clientes por riesgo y mide cuántas fugas captura cada decil.
-
-    Es la vista más útil para el banco: si solo puede contactar al 10% de los
-    clientes, ¿qué porcentaje de las fugas reales alcanza?
-    """
     y, s = resultado["y_true"], resultado["y_score"]
     orden = np.argsort(-s, kind="stable")
     y_ord = y[orden]
@@ -141,9 +140,10 @@ def tabla_lift(resultado: dict, n_bins: int = 10) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+# Calculo la importancia por permutación sobre las variables originales
+# (antes del pipeline)
 def importancia_permutacion(modelo, X, y, scoring: str = "average_precision",
                             n_repeats: int = 5, n_jobs: int = -1) -> pd.DataFrame:
-    """Importancia por permutación sobre las variables originales (pre-pipeline)."""
     r = permutation_importance(modelo, X, y, scoring=scoring, n_repeats=n_repeats,
                                random_state=RANDOM_STATE, n_jobs=n_jobs)
     out = pd.DataFrame({"variable": X.columns,
@@ -155,8 +155,8 @@ def importancia_permutacion(modelo, X, y, scoring: str = "average_precision",
 # --------------------------------------------------------------------------
 # Gráficos
 # --------------------------------------------------------------------------
+# Dibujo las curvas ROC y Precisión-Recall de uno o varios modelos
 def plot_curvas(resultados: dict, guardar: bool = True, archivo: str = "svm/curvas_roc_pr"):
-    """Curvas ROC y Precisión-Recall de uno o varios modelos."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     for nombre, r in resultados.items():
         fpr, tpr, _ = roc_curve(r["y_true"], r["y_score"])
@@ -196,12 +196,12 @@ def plot_importancia(imp: pd.DataFrame, top: int = 12, guardar: bool = True,
     guardar_y_mostrar(fig, archivo, guardar)
 
 
+# Dibujo la curva de calibración: probabilidad predicha contra proporción
+# real de fugas.
+#
+# Cerca de la diagonal, la probabilidad se puede leer como probabilidad real
+# de fuga. El Brier score va en la leyenda (menor es mejor).
 def plot_calibracion(resultados: dict, guardar: bool = True, archivo: str = "comparacion/calibracion"):
-    """Curva de calibración: probabilidad predicha contra proporción real de fugas.
-
-    Cerca de la diagonal = la probabilidad se puede leer como probabilidad real
-    de fuga. El Brier score va en la leyenda: menor es mejor.
-    """
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.plot([0, 1], [0, 1], "k--", label="Calibración perfecta")
     for nombre, r in resultados.items():
@@ -217,12 +217,13 @@ def plot_calibracion(resultados: dict, guardar: bool = True, archivo: str = "com
 # --------------------------------------------------------------------------
 # Comparación entre modelos y decisión de negocio
 # --------------------------------------------------------------------------
+# Calculo PR-AUC y F1 de cada modelo con su intervalo de confianza
+# (bootstrap en la prueba).
+#
+# Remuestreo los clientes de prueba con reemplazo, los mismos para todos los
+# modelos. Si los intervalos de dos modelos se traslapan, la diferencia
+# entre ellos no es confiable.
 def tabla_intervalos(resultados: dict, n_boot: int = 1000, nivel: float = 0.95) -> pd.DataFrame:
-    """PR-AUC y F1 de cada modelo con su intervalo de confianza (bootstrap en el set de prueba).
-
-    Se remuestrean los clientes de prueba con reemplazo, los mismos para todos los modelos.
-    Si los intervalos de dos modelos se traslapan, la diferencia entre ellos no es confiable.
-    """
     rng = np.random.default_rng(RANDOM_STATE)
     y = np.asarray(next(iter(resultados.values()))["y_true"])
     muestras = rng.integers(0, len(y), size=(n_boot, len(y)))
@@ -240,8 +241,9 @@ def tabla_intervalos(resultados: dict, n_boot: int = 1000, nivel: float = 0.95) 
     return pd.DataFrame(filas).T.sort_values("pr_auc", ascending=False).round(3)
 
 
+# Dibujo el PR-AUC de cada modelo con su intervalo de confianza del 95%
+# (sale de tabla_intervalos)
 def plot_intervalos(tabla: pd.DataFrame, guardar: bool = True, archivo: str = "comparacion/intervalos_confianza"):
-    """PR-AUC de cada modelo con su intervalo de confianza del 95% (salida de tabla_intervalos)."""
     d = tabla.iloc[::-1]
     pos = np.arange(len(d))
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -255,8 +257,9 @@ def plot_intervalos(tabla: pd.DataFrame, guardar: bool = True, archivo: str = "c
     guardar_y_mostrar(fig, archivo, guardar)
 
 
+# Dibujo la curva de ganancia acumulada: % de fugas capturadas al contactar
+# al X% de clientes de mayor riesgo
 def plot_ganancia(resultados: dict, guardar: bool = True, archivo: str = "comparacion/curva_ganancia"):
-    """Curva de ganancia acumulada: % de fugas capturadas al contactar al X% de clientes de mayor riesgo."""
     fig, ax = plt.subplots(figsize=(7, 5))
     for nombre, r in resultados.items():
         y = np.asarray(r["y_true"])
@@ -273,12 +276,12 @@ def plot_ganancia(resultados: dict, guardar: bool = True, archivo: str = "compar
     guardar_y_mostrar(fig, archivo, guardar)
 
 
+# Comparo umbrales de decisión: a cuántos clientes se contacta y cuántas
+# fugas se detectan.
+#
+# Los umbrales se eligen con CV del entrenamiento (no con la prueba): el que
+# maximiza F1 y el más alto que alcanza cada recall objetivo.
 def tabla_umbrales(modelo, datos, recalls=(0.80, 0.90), n_jobs: int = -1) -> pd.DataFrame:
-    """Compara umbrales de decisión: a cuántos clientes se contacta y cuántas fugas se detectan.
-
-    Los umbrales se eligen con validación cruzada del entrenamiento (no con la prueba):
-    el que maximiza F1 y el más alto que alcanza cada recall objetivo.
-    """
     y_tr = np.asarray(datos.y_train)
     s_cv = _puntajes_cv(modelo, datos.X_train, y_tr, n_jobs=n_jobs)
     umbrales = {"Máximo F1": elegir_umbral(y_tr, s_cv, "f1")}
@@ -310,8 +313,9 @@ METAS = {
 }
 
 
+# Calculo los indicadores de negocio de un modelo en la prueba (con su
+# umbral elegido)
 def indicadores_negocio(resultado: dict) -> dict:
-    """Indicadores de negocio de un modelo en el set de prueba (con su umbral elegido)."""
     y, s, pred = resultado["y_true"], resultado["y_score"], resultado["y_pred"]
     top = np.argsort(-s, kind="stable")[: int(round(0.20 * len(y)))]
     return {
@@ -323,17 +327,17 @@ def indicadores_negocio(resultado: dict) -> dict:
     }
 
 
+# Devuelvo True si el valor cumple la meta del indicador
 def cumple_meta(indicador: str, valor: float, metas: dict = METAS) -> bool:
-    """True si el valor cumple la meta del indicador."""
     signo, meta, _ = metas[indicador]
     return valor >= meta if signo == ">=" else valor <= meta
 
 
+# Comparo las metas del banco con el resultado de cada modelo (el primer
+# renglón es la meta).
+#
+# La última columna cuenta cuántas metas cumple cada modelo.
 def tabla_indicadores(resultados: dict, metas: dict = METAS) -> pd.DataFrame:
-    """Metas del banco contra resultado de cada modelo (el primer renglón es la meta).
-
-    La última columna cuenta cuántas metas cumple cada modelo.
-    """
     filas = {"Meta": {k: f"{s} {m:g}" for k, (s, m, _) in metas.items()} | {"metas_cumplidas": f"{len(metas)} de {len(metas)}"}}
     for nombre, r in resultados.items():
         ind = indicadores_negocio(r)

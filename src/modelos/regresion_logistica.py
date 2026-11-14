@@ -1,15 +1,17 @@
-"""Regresión logística para predecir churn: el modelo más simple, como punto de partida.
-
-Sirve de referencia para comparar: si los demás modelos la superan con claridad,
-se justifica usar modelos más complejos.
-
-Flujo típico desde el notebook:
-
-    from src.modelos import regresion_logistica as rl
-    busqueda = rl.buscar_hiperparametros(datos)
-    rl.resumen_busqueda(busqueda)
-    modelo = rl.entrenar_final(datos, rl.mejores_parametros(busqueda))
-"""
+# --------------------------------------------------------------------------
+# Regresión logística para predecir churn: el modelo más simple, que uso
+# como punto de partida.
+#
+# Sirve de referencia: si los demás modelos la superan con claridad, se
+# justifica usar modelos más complejos.
+#
+# Flujo típico desde el notebook:
+#
+#     from src.modelos import regresion_logistica as rl
+#     busqueda = rl.buscar_hiperparametros(datos)
+#     rl.resumen_busqueda(busqueda)
+#     modelo = rl.entrenar_final(datos, rl.mejores_parametros(busqueda))
+# --------------------------------------------------------------------------
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
@@ -25,12 +27,11 @@ PARAM_GRID = {
 }
 
 
+# Armo el pipeline: preprocesamiento (con escalado) + regresión logística.
+#
+# El escalado hace que la regularización trate igual a todas las variables.
+# No necesita calibrarse porque ya entrega probabilidades calibradas.
 def construir_pipeline(datos: DataBundle, **params) -> Pipeline:
-    """Pipeline: preprocesamiento (con escalado) + regresión logística.
-
-    El escalado hace que la regularización trate igual a todas las variables.
-    La regresión logística ya entrega probabilidades calibradas, no necesita calibrarse.
-    """
     base = dict(max_iter=2000, random_state=RANDOM_STATE)
     return Pipeline([
         ("pre", datos.preprocessor(scale=True)),
@@ -38,20 +39,22 @@ def construir_pipeline(datos: DataBundle, **params) -> Pipeline:
     ])
 
 
+# Hago un grid search con validación cruzada estratificada solo sobre el
+# entrenamiento
 def buscar_hiperparametros(datos: DataBundle, param_grid=None, cv: int = 5,
                            n_jobs: int = -1, verbose: int = 1) -> GridSearchCV:
-    """Grid search con validación cruzada estratificada SOLO sobre el set de entrenamiento."""
     return bq.ejecutar_busqueda(GridSearchCV, construir_pipeline(datos), datos, cv, n_jobs,
                                 verbose, param_grid=param_grid or PARAM_GRID)
 
 
+# Devuelvo los mejores hiperparámetros sin el prefijo 'logreg__'
 def mejores_parametros(busqueda: GridSearchCV) -> dict:
-    """Mejores hiperparámetros sin el prefijo 'logreg__'."""
     return bq.mejores_parametros(busqueda, "logreg__")
 
 
+# Muestro las mejores combinaciones según PR-AUC promedio en validación
+# cruzada
 def resumen_busqueda(busqueda: GridSearchCV, top: int = 10) -> pd.DataFrame:
-    """Las mejores combinaciones según PR-AUC promedio en validación cruzada."""
     r = pd.DataFrame(busqueda.cv_results_)
     cols = {
         "param_logreg__C": "C",
@@ -68,13 +71,14 @@ def resumen_busqueda(busqueda: GridSearchCV, top: int = 10) -> pd.DataFrame:
     return out.sort_values("pr_auc", ascending=False).head(top).round(4).reset_index(drop=True)
 
 
+# Reentreno con los mejores parámetros sobre todo el entrenamiento
 def entrenar_final(datos: DataBundle, params: dict) -> Pipeline:
-    """Reentrena con los mejores parámetros sobre todo el set de entrenamiento."""
     return bq.entrenar_final(construir_pipeline(datos, **params), datos)
 
 
+# Muestro las variables con mayor peso (en valor absoluto). Positivo = sube
+# la probabilidad de fuga
 def coeficientes(modelo: Pipeline, top: int = 10) -> pd.DataFrame:
-    """Variables con mayor peso (en valor absoluto). Positivo = sube la probabilidad de fuga."""
     nombres = modelo["pre"].get_feature_names_out()
     coef = pd.DataFrame({"variable": nombres, "coeficiente": modelo["logreg"].coef_[0]})
     coef["abs"] = coef["coeficiente"].abs()

@@ -1,4 +1,6 @@
-"""Pruebas de la caché y del guardado de modelos."""
+# --------------------------------------------------------------------------
+# Pruebas de la caché y del guardado de modelos
+# --------------------------------------------------------------------------
 from src import utils
 
 

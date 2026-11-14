@@ -1,4 +1,7 @@
-"""Utilidades compartidas por todos los módulos: carpeta de figuras, estilo y guardado."""
+# --------------------------------------------------------------------------
+# Funciones compartidas por todos los módulos: carpeta de figuras, estilo y
+# guardado
+# --------------------------------------------------------------------------
 import shutil
 
 import joblib
@@ -13,8 +16,9 @@ CACHE_DIR = MODELS_DIR / "cache"
 sns.set_theme(style="whitegrid")
 
 
+# Guardo la figura en reports/figures/ (si guardar=True), la muestro y la
+# cierro
 def guardar_y_mostrar(fig, nombre: str, guardar: bool = True):
-    """Guarda la figura en reports/figures/<tema>/ (si guardar=True), la muestra y la cierra."""
     if guardar:
         ruta = FIG_DIR / f"{nombre}.png"  # nombre puede traer carpeta, ej. "svm/kernels"
         ruta.parent.mkdir(parents=True, exist_ok=True)
@@ -23,8 +27,9 @@ def guardar_y_mostrar(fig, nombre: str, guardar: bool = True):
     plt.close(fig)
 
 
+# Guardo cada modelo entrenado y la tabla de resultados en models/, para no
+# reentrenar
 def guardar_modelos(modelos: dict, resultados: dict):
-    """Guarda cada modelo entrenado y la tabla de resultados en models/, para no reentrenar."""
     carpeta = MODELS_DIR / "finales"  # los modelos van en models/finales/, aparte de resultados y caché
     carpeta.mkdir(parents=True, exist_ok=True)
     for nombre, modelo in modelos.items():
@@ -32,21 +37,22 @@ def guardar_modelos(modelos: dict, resultados: dict):
     joblib.dump(resultados, MODELS_DIR / "resultados.joblib", compress=3)
 
 
+# Cargo los modelos y los resultados guardados con guardar_modelos
 def cargar_modelos():
-    """Devuelve (modelos, resultados) guardados con guardar_modelos."""
     resultados = joblib.load(MODELS_DIR / "resultados.joblib")
     carpeta = MODELS_DIR / "finales"
     modelos = {n: joblib.load(carpeta / f"{n.lower().replace(' ', '_')}.joblib") for n in resultados}
     return modelos, resultados
 
 
+# Si el resultado ya está guardado en models/cache/, lo cargo; si no, lo
+# calculo y lo guardo.
+#
+# `calcular` es una función sin argumentos (por ejemplo, una lambda) que
+# solo se ejecuta cuando no hay nada guardado.
+#
+# Con forzar=True lo vuelvo a calcular y reemplazo lo guardado.
 def cacheado(nombre: str, calcular, forzar: bool = False):
-    """Devuelve el resultado guardado en models/cache/ si ya existe; si no, lo calcula y lo guarda.
-
-    `calcular` es una función sin argumentos (por ejemplo, una lambda) que solo se ejecuta
-    cuando no hay nada guardado. Así las búsquedas y los entrenamientos largos se hacen una vez.
-    Con `forzar=True` se vuelve a calcular y se reemplaza lo guardado.
-    """
     archivo = CACHE_DIR / f"{nombre.lower().replace(' ', '_')}.joblib"
     if archivo.exists() and not forzar:
         print(f"Cargado desde models/cache: {nombre}")
@@ -57,6 +63,7 @@ def cacheado(nombre: str, calcular, forzar: bool = False):
     return resultado
 
 
+# Borro models/cache/ (lo uso si cambian los datos o el código de los
+# modelos)
 def borrar_cache():
-    """Borra models/cache/. Usarla si cambian los datos o el código de los modelos."""
     shutil.rmtree(CACHE_DIR, ignore_errors=True)

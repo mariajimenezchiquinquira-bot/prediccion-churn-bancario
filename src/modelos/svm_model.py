@@ -1,12 +1,13 @@
-"""Modelo SVM (Support Vector Machine) para predecir churn.
-
-Flujo típico desde el notebook:
-
-    from src.modelos import svm_model as svm
-    busqueda = svm.buscar_hiperparametros(datos)
-    svm.resumen_busqueda(busqueda)
-    modelo = svm.entrenar_final(datos, svm.mejores_parametros(busqueda))
-"""
+# --------------------------------------------------------------------------
+# Modelo SVM (Support Vector Machine) para predecir churn.
+#
+# Flujo típico desde el notebook:
+#
+#     from src.modelos import svm_model as svm
+#     busqueda = svm.buscar_hiperparametros(datos)
+#     svm.resumen_busqueda(busqueda)
+#     modelo = svm.entrenar_final(datos, svm.mejores_parametros(busqueda))
+# --------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -56,27 +57,29 @@ PARAM_GRID = [
 ]
 
 
+# Creo el SVC con los valores por defecto del proyecto (rbf, C=1,
+# class_weight balanced) + params.
+#
+# Lo usan este módulo y el Stacking de ensemble_models, para definir el SVM
+# en un solo lugar.
 def crear_svc(**params) -> SVC:
-    """SVC con los valores por defecto del proyecto (rbf, C=1, class_weight balanced) + params.
-
-    Lo usan este módulo y el Stacking de ensemble_models, para definir el SVM en un solo lugar.
-    """
     base = dict(kernel="rbf", C=1.0, gamma="scale",
                 class_weight="balanced", random_state=RANDOM_STATE)
     return SVC(**{**base, **params})
 
 
+# Armo el pipeline: preprocesamiento (con escalado) + SVC.
+#
+# Con calibrar=True envuelvo el SVC en CalibratedClassifierCV (sigmoide de
+# Platt), que habilita predict_proba. No uso SVC(probability=True) porque
+# está deprecado desde scikit-learn 1.9.
+#
+# El escalado es obligatorio en SVM: sin él, variables como credit_limit
+# (miles) dominarían a otras como dependent_count (0 a 5).
+#
+# class_weight='balanced' penaliza más los errores sobre la clase
+# minoritaria.
 def construir_pipeline(datos: DataBundle, calibrar: bool = False, **params_svc) -> Pipeline:
-    """Pipeline: preprocesamiento (con escalado) + SVC.
-
-    Con `calibrar=True` el SVC se envuelve en CalibratedClassifierCV (Platt),
-    lo que habilita `predict_proba`. (`SVC(probability=True)` está deprecado
-    desde scikit-learn 1.9.)
-
-    El escalado es obligatorio en SVM: sin él, variables como credit_limit
-    (miles) dominarían a otras como dependent_count (0 a 5).
-    `class_weight='balanced'` penaliza más los errores sobre la clase minoritaria.
-    """
     svc = crear_svc(**params_svc)
     if calibrar:
         svc = CalibratedClassifierCV(svc, method="sigmoid", cv=5, ensemble=False)
@@ -86,20 +89,22 @@ def construir_pipeline(datos: DataBundle, calibrar: bool = False, **params_svc) 
     ])
 
 
+# Hago un grid search con validación cruzada estratificada solo sobre el
+# entrenamiento
 def buscar_hiperparametros(datos: DataBundle, param_grid=None, cv: int = 5,
                            n_jobs: int = -1, verbose: int = 1) -> GridSearchCV:
-    """Grid search con validación cruzada estratificada SOLO sobre el set de entrenamiento."""
     return bq.ejecutar_busqueda(GridSearchCV, construir_pipeline(datos), datos, cv, n_jobs,
                                 verbose, param_grid=param_grid or PARAM_GRID)
 
 
+# Devuelvo los mejores hiperparámetros sin el prefijo 'svc__'
 def mejores_parametros(busqueda: GridSearchCV) -> dict:
-    """Mejores hiperparámetros sin el prefijo 'svc__'."""
     return bq.mejores_parametros(busqueda, "svc__")
 
 
+# Muestro las mejores combinaciones según PR-AUC promedio en validación
+# cruzada
 def resumen_busqueda(busqueda: GridSearchCV, top: int = 10) -> pd.DataFrame:
-    """Las mejores combinaciones según PR-AUC promedio en validación cruzada."""
     r = pd.DataFrame(busqueda.cv_results_)
     cols = {
         "param_svc__kernel": "kernel",
@@ -123,20 +128,16 @@ def resumen_busqueda(busqueda: GridSearchCV, top: int = 10) -> pd.DataFrame:
     return out.sort_values("pr_auc", ascending=False).head(top).round(4).reset_index(drop=True)
 
 
+# Reentreno con los mejores parámetros sobre todo el entrenamiento, con el
+# SVC calibrado para que sus probabilidades se lean como probabilidad real
+# de fuga
 def entrenar_final(datos: DataBundle, params: dict) -> Pipeline:
-    """Reentrena con los mejores parámetros sobre todo el set de entrenamiento.
-
-    Se calibra el SVC (sigmoide de Platt, validación cruzada interna) para
-    obtener probabilidades de churn que se puedan leer como probabilidad real de fuga.
-    """
     return bq.entrenar_final(construir_pipeline(datos, calibrar=True, **params), datos)
 
 
+# Dibujo el PR-AUC en validación cruzada de cada combinación (C, gamma) del
+# kernel RBF, con el class_weight de la mejor combinación de la búsqueda
 def plot_heatmap_cv(busqueda: GridSearchCV, guardar: bool = True):
-    """PR-AUC en validación cruzada para cada combinación (C, gamma) del kernel RBF.
-
-    Se muestra con el class_weight de la mejor combinación de la búsqueda.
-    """
     r = pd.DataFrame(busqueda.cv_results_)
     cw = busqueda.best_params_.get("svc__class_weight")
     col = r["param_svc__class_weight"]
@@ -157,8 +158,9 @@ def plot_heatmap_cv(busqueda: GridSearchCV, guardar: bool = True):
     guardar_y_mostrar(fig, "svm/heatmap_cv", guardar)
 
 
+# Muestro la mejor combinación de cada kernel, según PR-AUC promedio en
+# validación cruzada
 def tabla_por_kernel(busqueda: GridSearchCV) -> pd.DataFrame:
-    """Mejor combinación de cada kernel, según PR-AUC promedio en validación cruzada."""
     r = pd.DataFrame(busqueda.cv_results_)
     mejor = r.loc[r.groupby("param_svc__kernel")["mean_test_pr_auc"].idxmax()]
     out = pd.DataFrame({
@@ -174,8 +176,9 @@ def tabla_por_kernel(busqueda: GridSearchCV) -> pd.DataFrame:
     return out.sort_values("pr_auc", ascending=False).round(4).reset_index(drop=True)
 
 
+# Dibujo el mejor PR-AUC de cada kernel, con su desviación en validación
+# cruzada
 def plot_kernels(busqueda: GridSearchCV, guardar: bool = True):
-    """Mejor PR-AUC de cada kernel, con su desviación en validación cruzada."""
     t = tabla_por_kernel(busqueda)
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.bar(t["kernel"], t["pr_auc"], yerr=t["pr_auc_std"], capsize=4, color="#4C72B0",
@@ -188,13 +191,13 @@ def plot_kernels(busqueda: GridSearchCV, guardar: bool = True):
     guardar_y_mostrar(fig, "svm/kernels", guardar)
 
 
+# Demuestro el SVM con más de dos clases (uno contra uno) sobre `variable`.
+#
+# No es el problema del proyecto (el churn es binario), solo muestra la
+# técnica. Uno las clases muy pequeñas y evalúo con validación cruzada de 5
+# partes.
 def demo_multiclase(datos: DataBundle, df: pd.DataFrame, variable: str = "card_category",
                     unir: tuple = ("Gold", "Platinum"), guardar: bool = True) -> pd.DataFrame:
-    """Demostración de SVM con más de dos clases (uno contra uno) sobre `variable`.
-
-    No es el problema del proyecto (el churn es binario): solo muestra la técnica.
-    Se unen las clases muy pequeñas y se evalúa con validación cruzada de 5 partes.
-    """
     X = pd.concat([datos.X_train, datos.X_test]).drop(columns=variable)
     y = df.loc[X.index, variable].replace({c: "/".join(unir) for c in unir})
     pre = build_preprocessor(datos.numericas, [c for c in datos.categoricas if c != variable])

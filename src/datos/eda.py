@@ -1,8 +1,9 @@
-"""Funciones de análisis exploratorio (EDA) para el proyecto de churn.
-
-Cada función de gráfico guarda la figura en reports/figures/ (para el informe)
-y además la muestra en el notebook.
-"""
+# --------------------------------------------------------------------------
+# Funciones del análisis exploratorio (EDA) del proyecto de churn.
+#
+# Cada gráfico se guarda en reports/figures/ (para el informe) y también se
+# muestra en el notebook.
+# --------------------------------------------------------------------------
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -17,8 +18,8 @@ ETIQUETAS = {0: "Permanece", 1: "Se fue"}
 # --------------------------------------------------------------------------
 # Tablas
 # --------------------------------------------------------------------------
+# Resumo el tipo, los nulos y los valores únicos de cada variable
 def resumen_general(df: pd.DataFrame) -> pd.DataFrame:
-    """Tipo, nulos y valores únicos por variable."""
     return pd.DataFrame(
         {
             "tipo": df.dtypes.astype(str),
@@ -28,8 +29,9 @@ def resumen_general(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+# Cuento los 'Unknown' de cada variable categórica y comparo su tasa de
+# churn con la del resto
 def tabla_unknown(df: pd.DataFrame) -> pd.DataFrame:
-    """Cuántos 'Unknown' hay por variable categórica y su tasa de churn."""
     filas = []
     for col in CATEGORICAL_COLS:
         es_unk = df[col] == "Unknown"
@@ -46,8 +48,8 @@ def tabla_unknown(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(filas)
 
 
+# Calculo el número de clientes y la tasa de churn (%) de cada categoría
 def tabla_churn_categorias(df: pd.DataFrame) -> pd.DataFrame:
-    """Número de clientes y tasa de churn (%) de cada categoría."""
     filas = []
     for col in CATEGORICAL_COLS:
         g = df.groupby(col, observed=True)[TARGET].agg(["size", "mean"])
@@ -58,8 +60,9 @@ def tabla_churn_categorias(df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat(filas, ignore_index=True)
 
 
+# Calculo la correlación de cada variable numérica con churn, de mayor a
+# menor magnitud
 def correlacion_con_target(df: pd.DataFrame) -> pd.Series:
-    """Correlación de cada variable numérica con churn, ordenada por magnitud."""
     corr = df.select_dtypes("number").corr()[TARGET].drop(TARGET)
     return corr.sort_values(key=abs, ascending=False).round(3)
 
@@ -87,8 +90,8 @@ VARS_CONTINUAS = ["customer_age", "months_on_book", "credit_limit", "total_revol
                   "total_ct_chng_q4_q1"]
 
 
+# Dibujo un boxplot de cada variable continua, separado por churn
 def plot_numericas_por_churn(df: pd.DataFrame, cols=VARS_CONTINUAS, guardar: bool = True):
-    """Boxplots de las variables continuas separados por churn."""
     n_cols = 4
     n_filas = -(-len(cols) // n_cols)
     fig, axes = plt.subplots(n_filas, n_cols, figsize=(4 * n_cols, 3.2 * n_filas))
@@ -105,8 +108,9 @@ def plot_numericas_por_churn(df: pd.DataFrame, cols=VARS_CONTINUAS, guardar: boo
     guardar_y_mostrar(fig, "eda/numericas_por_churn", guardar)
 
 
+# Dibujo la tasa de churn de cada categoría, con la tasa global como
+# referencia y el número de clientes (n)
 def plot_categoricas_churn(df: pd.DataFrame, guardar: bool = True):
-    """Tasa de churn por categoría, con la tasa global como referencia y el número de clientes (n)."""
     cols = CATEGORICAL_COLS
     global_rate = df[TARGET].mean()
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
@@ -144,8 +148,9 @@ VARS_POCOS_VALORES = ["months_inactive_12_mon", "contacts_count_12_mon",
                       "total_relationship_count"]
 
 
+# Dibujo la tasa de churn de cada valor de la variable, con el número de
+# clientes (n)
 def plot_churn_por_valor(df: pd.DataFrame, cols=VARS_POCOS_VALORES, guardar: bool = True):
-    """Tasa de churn por cada valor de una variable, con el número de clientes (n)."""
     tasa_global = df[TARGET].mean()
     fig, axes = plt.subplots(1, len(cols), figsize=(5 * len(cols), 4), sharey=True)
     for ax, col in zip(axes, cols):
@@ -162,8 +167,9 @@ def plot_churn_por_valor(df: pd.DataFrame, cols=VARS_POCOS_VALORES, guardar: boo
     guardar_y_mostrar(fig, "eda/churn_por_valor", guardar)
 
 
+# Comparo la distribución del número de transacciones (total_trans_ct) entre
+# quienes se fueron y quienes se quedaron
 def plot_distribucion_transacciones(df: pd.DataFrame, guardar: bool = True):
-    """Distribución del número de transacciones (total_trans_ct) según churn."""
     fig, ax = plt.subplots(figsize=(7, 4))
     for valor, color in [(0, "#4C72B0"), (1, "#C44E52")]:
         x = df.loc[df[TARGET] == valor, "total_trans_ct"]

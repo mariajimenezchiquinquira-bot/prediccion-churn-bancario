@@ -1,4 +1,6 @@
-"""Pruebas de la carga, la limpieza y la partición de los datos."""
+# --------------------------------------------------------------------------
+# Pruebas de la carga, la limpieza y la partición de los datos
+# --------------------------------------------------------------------------
 import numpy as np
 import pytest
 from sklearn.exceptions import NotFittedError
@@ -65,3 +67,16 @@ def test_el_escalado_se_aprende_solo_con_el_entrenamiento(datos):
 def test_falla_si_el_archivo_no_existe(tmp_path):
     with pytest.raises(FileNotFoundError):
         dp.load_data(tmp_path / "no_existe.xlsx")
+
+
+def test_verificacion_de_rangos_no_encuentra_negativos(df):
+    rango = dp.verificar_valores_numericos(df)
+    assert (rango["minimo"] >= 0).all()
+    assert {"credit_limit", "total_trans_amt"} <= set(rango.index)
+
+
+def test_verificacion_falla_si_hay_valores_negativos(df):
+    malo = df.copy()
+    malo.iloc[0, malo.columns.get_loc("credit_limit")] = -1
+    with pytest.raises(ValueError):
+        dp.verificar_valores_numericos(malo)

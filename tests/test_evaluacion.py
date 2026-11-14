@@ -1,4 +1,6 @@
-"""Pruebas de las métricas, los umbrales y las tablas de evaluación."""
+# --------------------------------------------------------------------------
+# Pruebas de las métricas, los umbrales y las tablas de evaluación
+# --------------------------------------------------------------------------
 import numpy as np
 import pytest
 

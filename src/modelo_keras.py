@@ -1,16 +1,18 @@
-"""Red neuronal de Keras con la misma interfaz que los modelos de scikit-learn.
-
-Por qué existe: las funciones del proyecto (umbral por validación cruzada,
-evaluación, curvas) esperan un modelo con fit y predict_proba. Esta clase
-envuelve una red de Keras para que funcione igual que un SVM o un LightGBM
-y se pueda usar dentro de un Pipeline, sin fuga de información.
-
-Uso típico desde el notebook:
-
-    from sklearn.pipeline import Pipeline
-    from src import modelo_keras as mk
-    red = Pipeline([("pre", datos.preprocessor()), ("red", mk.RedNeuronal())])
-"""
+# --------------------------------------------------------------------------
+# Red neuronal de Keras con la misma interfaz que los modelos de scikit-
+# learn.
+#
+# Existe porque las funciones del proyecto (umbral por CV, evaluación,
+# curvas) esperan un modelo con fit y predict_proba. Esta clase envuelve una
+# red de Keras para que funcione igual que un SVM o un LightGBM y se pueda
+# usar dentro de un Pipeline, sin fuga de información.
+#
+# Uso típico desde el notebook:
+#
+#     from sklearn.pipeline import Pipeline
+#     from src import modelo_keras as mk
+#     red = Pipeline([("pre", datos.preprocessor()), ("red", mk.RedNeuronal())])
+# --------------------------------------------------------------------------
 import math
 
 import keras
@@ -26,17 +28,16 @@ from src.datos.data_prep import RANDOM_STATE
 from src.utils import guardar_y_mostrar
 
 
+# Red feed-forward (keras.Sequential) para clasificación binaria.
+#
+# Parámetros principales:
+# - capas: neuronas de cada capa oculta, por ejemplo (32, 16).
+# - dropout: fracción de neuronas que se apaga en cada capa oculta
+#   (regularización).
+# - l2: castigo L2 a los pesos (regularización).
+# - optimizador: "adam", "sgd" (con momentum y decaimiento) o "rmsprop".
+# - paciencia: épocas sin mejorar antes de parar (parada temprana).
 class RedNeuronal(ClassifierMixin, BaseEstimator):
-    """Red feed-forward (keras.Sequential) para clasificación binaria.
-
-    Parámetros principales
-    - capas: neuronas de cada capa oculta, por ejemplo (32, 16).
-    - dropout: fracción de neuronas que se apaga en cada capa oculta (regularización).
-    - l2: castigo L2 a los pesos (regularización).
-    - optimizador: "adam", "sgd" (con momentum y decaimiento) o "rmsprop".
-    - paciencia: épocas sin mejorar antes de parar (parada temprana).
-    """
-
     def __init__(self, capas=(32, 16), activacion="relu", dropout=0.0, l2=0.0,
                  optimizador="adam", lr=0.001, momentum=0.0, decaimiento=0.0,
                  epocas=100, batch_size=64, paciencia=10, random_state=42):
@@ -121,18 +122,20 @@ ESPACIO = {
 }
 
 
+# Armo el preprocesador + la red, para que el escalado se aprenda solo con
+# el entrenamiento
 def construir_pipeline(datos, **params) -> Pipeline:
-    """Preprocesador + red, para que el escalado se aprenda solo con el entrenamiento."""
     return Pipeline([("pre", datos.preprocessor()), ("red", RedNeuronal(**params))])
 
 
+# Entreno la red (la base si no hay parámetros) con todo el entrenamiento
 def entrenar_final(datos, params=None) -> Pipeline:
-    """Entrena la red (base si no hay parámetros) con todo el set de entrenamiento."""
     return construir_pipeline(datos, **(params or {})).fit(datos.X_train, datos.y_train)
 
 
+# Hago una búsqueda al azar con validación cruzada solo sobre el
+# entrenamiento (PR-AUC)
 def buscar_hiperparametros(datos, n_iter: int = 15, cv: int = 5) -> RandomizedSearchCV:
-    """Búsqueda al azar con validación cruzada SOLO sobre el entrenamiento (PR-AUC)."""
     busqueda = RandomizedSearchCV(
         construir_pipeline(datos), ESPACIO, n_iter=n_iter, scoring="average_precision",
         cv=StratifiedKFold(cv, shuffle=True, random_state=RANDOM_STATE),
@@ -140,19 +143,20 @@ def buscar_hiperparametros(datos, n_iter: int = 15, cv: int = 5) -> RandomizedSe
     return busqueda.fit(datos.X_train, datos.y_train)
 
 
+# Devuelvo los mejores hiperparámetros sin el prefijo 'red__'
 def mejores_parametros(busqueda) -> dict:
-    """Mejores hiperparámetros sin el prefijo 'red__'."""
     return {k.replace("red__", ""): v for k, v in busqueda.best_params_.items()}
 
 
+# Muestro las mejores combinaciones con su PR-AUC promedio en validación
+# cruzada
 def resumen_busqueda(busqueda, top: int = 5) -> pd.DataFrame:
-    """Las mejores combinaciones con su PR-AUC promedio en validación cruzada."""
     res = pd.DataFrame(busqueda.cv_results_).sort_values("rank_test_score")
     return res.filter(regex="param_|mean_test_score|std_test_score").head(top)
 
 
+# Dibujo el error y el PR-AUC por época, en entrenamiento y validación
 def plot_aprendizaje(modelo, archivo: str = "redes/aprendizaje"):
-    """Error y PR-AUC por época, en entrenamiento y validación."""
     import matplotlib.pyplot as plt
     h = modelo.named_steps["red"].historia_.history
     fig, ejes = plt.subplots(1, 2, figsize=(11, 4))
@@ -167,8 +171,8 @@ def plot_aprendizaje(modelo, archivo: str = "redes/aprendizaje"):
     guardar_y_mostrar(fig, archivo)
 
 
+# Comparo la red sin regularizar, con L2, con Dropout y con ambos
 def tabla_regularizacion(datos, params: dict) -> pd.DataFrame:
-    """Compara la red sin regularizar, con L2, con Dropout y con ambos."""
     base = {**params, "l2": 0.0, "dropout": 0.0}
     variantes = {
         "Sin regularización": base,
@@ -197,12 +201,11 @@ def tabla_regularizacion(datos, params: dict) -> pd.DataFrame:
 OPTIMIZADORES = {"SGD": "sgd", "RMSprop": "rmsprop", "Adam": "adam"}
 
 
+# Entreno la red final cambiando solo el optimizador (SGD, RMSprop y Adam).
+#
+# Todos usan el método del gradiente; cambia cómo lo usan para corregir los
+# pesos. Devuelvo (tabla, historias) con el aprendizaje de cada época.
 def comparar_optimizadores(datos, params: dict):
-    """Entrena la red final cambiando solo el optimizador (SGD, RMSprop y Adam).
-
-    Todos usan el método del gradiente; cambia cómo se usa el gradiente para corregir
-    los pesos. Devuelve (tabla, historias) con el aprendizaje de cada época.
-    """
     filas, historias = [], {}
     for nombre, opt in OPTIMIZADORES.items():
         m = entrenar_final(datos, {**params, "optimizador": opt, "momentum": 0.0})
@@ -219,8 +222,8 @@ def comparar_optimizadores(datos, params: dict):
     return pd.DataFrame(filas).set_index("optimizador").round(3), historias
 
 
+# Dibujo el error y el PR-AUC de validación por época para cada optimizador
 def plot_optimizadores(historias: dict, archivo: str = "redes/optimizadores"):
-    """Error y PR-AUC de validación por época para cada optimizador."""
     import matplotlib.pyplot as plt
     fig, ejes = plt.subplots(1, 2, figsize=(11, 4))
     for eje, medida, titulo in zip(ejes, ["val_loss", "val_pr_auc"],
